@@ -29,12 +29,22 @@ def stream_gemini_response(prompt: str, system_prompt: str, api_key: str, model:
     client = setup_gemini_client(api_key)
     model = model
 
+    # Include all prior messages for memory backtracking
     contents = [
+        types.Content(
+            role=msg["role"],
+            parts=[types.Part.from_text(text=msg["content"])],
+        )
+        for msg in st.session_state.messages
+    ]
+
+    # Append the current user prompt
+    contents.append(
         types.Content(
             role="user",
             parts=[types.Part.from_text(text=prompt)],
-        ),
-    ]
+        )
+    )
 
     config = types.GenerateContentConfig(
         response_mime_type="text/plain",
