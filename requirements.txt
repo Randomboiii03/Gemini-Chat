@@ -1,0 +1,5 @@
+google-genai>=1.14.0
+pymupdf>=1.25.5
+python-docx>=1.1.2
+python-dotenv>=1.1.0
+streamlit>=1.45.0
