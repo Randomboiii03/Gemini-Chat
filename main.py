@@ -128,37 +128,59 @@ if st.session_state.reference_text:
 with st.container():
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
-            st.write(msg["content"])
+            if msg["role"] == "user":
+                st.write(msg["prompt_text"])
+                if msg["file_name"]:
+                    st.badge(msg["file_name"], icon="📎", color="gray")
+            else:
+                st.write(msg["content"])
 
 # --- Chat Input (Text) ---
 if prompt := st.chat_input(
     "Say something and/or attach a PDF or DOCX file",
     accept_file=True,
-    file_type=["pdf", "docx"],  # Only accepting PDF and DOCX files
+    file_type=["pdf", "docx"],
 ):
-    chat_text = ""
+    user_display_text = prompt.text
+    message_for_history = prompt.text
 
     if prompt.files:
         uploaded_file = prompt.files[0]
-        
-        text = process_document(uploaded_file)
-        chat_text = f"File uploaded: {uploaded_file.name}\n\nContent of file: {text}"
-    
-    chat_text = chat_text + prompt.text
+        file_content = process_document(uploaded_file)
 
-    st.session_state.messages.append({"role": "user", "content": chat_text})
+        # Add file content to the message saved in history, not to what is displayed
+        message_for_history += f"\n\n[Attached file content from '{uploaded_file.name}']:\n{file_content}"
 
+    # Save full version for assistant processing
+    st.session_state.messages.append(
+        {
+            "role": "user", 
+            "file_name": uploaded_file.name if prompt.files else None, 
+            "prompt_text": prompt.text,
+            "content": message_for_history
+         }
+    )
+
+    # Render minimal UI for user message
     with st.chat_message("user"):
-        if prompt.text != "":
+        if prompt.text:
             st.write(prompt.text)
-            
         if prompt.files:
-            st.badge(prompt.files[0].name, icon="📎", color="gray")
+            st.badge(uploaded_file.name, icon="📎", color="gray")
 
+    # Assistant response
     with st.chat_message("assistant"):
         response_area = st.empty()
         full_response = ""
-        for chunk in stream_gemini_response(chat_text, full_system_prompt, api_key, model):
-            full_response += chunk.text
+        try:
+            for chunk in stream_gemini_response(message_for_history, full_system_prompt, api_key, model):
+                full_response += chunk.text
+                response_area.markdown(full_response)
+        except genai.errors.ServerError as e:
+            full_response = "⚠️ The model is currently overloaded or unavailable. Please try again shortly."
             response_area.markdown(full_response)
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        except Exception as e:
+            full_response = f"❌ An unexpected error occurred: {e}"
+            response_area.markdown(full_response)
+        finally:
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
