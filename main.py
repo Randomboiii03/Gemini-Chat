@@ -4,7 +4,7 @@ from functions import *
 
 
 # --- Streamlit Setup ---
-st.set_page_config(page_title="Gemini Chat", layout="wide")
+st.set_page_config(page_title="Gemini Chat", layout="wide", initial_sidebar_state="collapsed")
 
 # --- Session State ---
 if "messages" not in st.session_state:
