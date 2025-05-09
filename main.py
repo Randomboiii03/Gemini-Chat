@@ -21,6 +21,12 @@ def extract_text_from_docx(file):
     doc = Document(file)
     return "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
 
+def process_document(file):
+    if file.type == "application/pdf":
+        return extract_text_from_pdf(file)
+    elif file.type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"]:
+        return extract_text_from_docx(file)
+
 # --- Gemini Setup ---
 def setup_gemini_client(api_key: str):
     return genai.Client(api_key=api_key)
@@ -74,7 +80,7 @@ if "sidebar_api_key" not in st.session_state:
 
 # --- Sidebar ---
 with st.sidebar:
-    st.title("Settings")
+    st.title("⚙️ Settings")
 
     # Model Selection
     st.session_state.model = st.selectbox(
@@ -95,10 +101,7 @@ with st.sidebar:
     uploaded_file = st.file_uploader("📎 Upload PDF or DOCX for Reference", type=["pdf", "docx"])
     if uploaded_file:
         try:
-            if uploaded_file.type == "application/pdf":
-                st.session_state.reference_text = extract_text_from_pdf(uploaded_file)
-            elif uploaded_file.type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"]:
-                st.session_state.reference_text = extract_text_from_docx(uploaded_file)
+            st.session_state.reference_text = process_document(uploaded_file)
             st.success("✅ Reference file processed.")
         except Exception as e:
             st.error(f"❌ Error reading file: {e}")
@@ -127,16 +130,35 @@ with st.container():
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
-# --- Chat Input ---
-if prompt := st.chat_input("Say something"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# --- Chat Input (Text) ---
+if prompt := st.chat_input(
+    "Say something and/or attach a PDF or DOCX file",
+    accept_file=True,
+    file_type=["pdf", "docx"],  # Only accepting PDF and DOCX files
+):
+    chat_text = ""
+
+    if prompt.files:
+        uploaded_file = prompt.files[0]
+        
+        text = process_document(uploaded_file)
+        chat_text = f"File uploaded: {uploaded_file.name}\n\nContent of file: {text}"
+    
+    chat_text = chat_text + prompt.text
+
+    st.session_state.messages.append({"role": "user", "content": chat_text})
+
     with st.chat_message("user"):
-        st.write(prompt)
+        if prompt.text != "":
+            st.write(prompt.text)
+            
+        if prompt.files:
+            st.badge(prompt.files[0].name, icon="📎", color="gray")
 
     with st.chat_message("assistant"):
         response_area = st.empty()
         full_response = ""
-        for chunk in stream_gemini_response(prompt, full_system_prompt, api_key, model):
+        for chunk in stream_gemini_response(chat_text, full_system_prompt, api_key, model):
             full_response += chunk.text
             response_area.markdown(full_response)
         st.session_state.messages.append({"role": "assistant", "content": full_response})
